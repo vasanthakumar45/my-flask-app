@@ -2,7 +2,7 @@ name: Flask CD Pipeline
 
 on:
   push:
-    branches: [main]     # Deploy only when pushing to main
+    branches: [main]
 
 jobs:
 
@@ -33,14 +33,12 @@ jobs:
   deploy:
     name: Deploy to AWS EC2
     runs-on: ubuntu-latest
-    needs: test            # Only deploy if tests pass!
+    needs: test
 
     steps:
-      # Step 1 - Checkout code
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Step 2 - Setup SSH Key
       - name: Setup SSH Key
         run: |
           mkdir -p ~/.ssh
@@ -48,40 +46,53 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
-      # Step 3 - Deploy to EC2
       - name: Deploy to EC2
         run: |
           ssh -i ~/.ssh/deploy_key \
               -o StrictHostKeyChecking=no \
-              ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} \
-              '
-                echo "🚀 Starting deployment..."
+              ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
 
-                # Go to project directory
-                cd ~/my-flask-app
+            echo "🚀 Starting deployment..."
 
-                # Pull latest code
-                echo "📥 Pulling latest code..."
-                git pull origin main
+            # ── Fix 1: Use correct path ──────────────
+            PROJECT_DIR="/root/my-flask-app"
 
-                # Rebuild and restart containers
-                echo "🐳 Restarting Docker containers..."
-                docker compose down
-                docker compose up --build -d
+            # Check if project exists, clone if not
+            if [ ! -d "$PROJECT_DIR/.git" ]; then
+              echo "📥 Project not found, cloning..."
+              git clone git@github.com:${{ secrets.GITHUB_REPOSITORY }} $PROJECT_DIR
+            fi
 
-                # Wait for containers to start
-                sleep 5
+            cd $PROJECT_DIR
 
-                # Verify deployment
-                echo "✅ Verifying deployment..."
-                docker compose ps
+            # ── Fix 2: Pull latest code ──────────────
+            echo "📥 Pulling latest code..."
+            git pull origin main
 
-                echo "🎉 Deployment successful!"
-              '
+            # ── Fix 3: Handle both docker compose versions ──
+            echo "🐳 Restarting Docker containers..."
+            if docker compose version > /dev/null 2>&1; then
+              echo "Using docker compose (v2)"
+              docker compose down
+              docker compose up --build -d
+            else
+              echo "Using docker-compose (v1)"
+              docker-compose down
+              docker-compose up --build -d
+            fi
 
-      # Step 4 - Verify deployment
+            # Wait for containers
+            sleep 5
+
+            # Verify
+            echo "✅ Verifying deployment..."
+            docker ps
+
+            echo "🎉 Deployment successful!"
+          ENDSSH
+
       - name: Verify App is Running
         run: |
-          sleep 10
+          sleep 15
           curl -f http://${{ secrets.EC2_HOST }}:5000/health || exit 1
-          echo "✅ App is live and healthy!"
+          echo "✅ App is live!"
