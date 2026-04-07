@@ -7,7 +7,7 @@ app = Flask(__name__)
 # ─── Database Configuration ───────────────────────────────
 app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv(
     "DATABASE_URL",
-    "postgresql://admin:secret123@db:5432/flaskdb"
+    "sqlite:///:memory:"   # ← Default to SQLite if no env var set
 )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
@@ -17,9 +17,9 @@ db = SQLAlchemy(app)
 class User(db.Model):
     __tablename__ = "users"
 
-    id       = db.Column(db.Integer, primary_key=True)
-    name     = db.Column(db.String(100), nullable=False)
-    email    = db.Column(db.String(100), unique=True, nullable=False)
+    id    = db.Column(db.Integer, primary_key=True)
+    name  = db.Column(db.String(100), nullable=False)
+    email = db.Column(db.String(100), unique=True, nullable=False)
 
     def to_dict(self):
         return {"id": self.id, "name": self.name, "email": self.email}
@@ -46,9 +46,10 @@ def create_user():
     db.session.commit()
     return jsonify(user.to_dict()), 201
 
-# ─── Create Tables & Run ───────────────────────────────────
-with app.app_context():
-    db.create_all()
+# ─── REMOVED db.create_all() from here! ───────────────────
 
 if __name__ == "__main__":
+    # Only create tables when running directly
+    with app.app_context():
+        db.create_all()
     app.run(host="0.0.0.0", port=5000, debug=True)

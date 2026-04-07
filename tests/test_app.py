@@ -8,11 +8,12 @@ def client():
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
 
     with app.app_context():
-        db.create_all()
+        db.create_all()      # ← Create tables here inside test context
         yield app.test_client()
+        db.session.remove()
         db.drop_all()
 
-# ─── Tests ────────────────────────────────────────
+# ─── Tests ────────────────────────────────────────────────
 
 def test_home(client):
     """Test home endpoint returns 200"""
@@ -45,11 +46,9 @@ def test_create_user(client):
 
 def test_get_users_after_create(client):
     """Test users list after creating a user"""
-    # Create a user first
     client.post("/users",
         json={"name": "Jane Doe", "email": "jane@example.com"}
     )
-    # Now fetch all users
     response = client.get("/users")
     assert response.status_code == 200
     data = response.get_json()
